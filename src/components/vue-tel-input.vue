@@ -26,33 +26,46 @@
         <span class="vti__dropdown-arrow">{{ data.open ? "▲" : "▼" }}</span>
       </slot>
       </span>
-      <ul v-if="data.open"
-          ref="refList"
-          :class="['vti__dropdown-list', data.dropdownOpenDirection]"
-          role="listbox">
-        <input v-if="dropdownOptions.showSearchBox"
-               :class="['vti__input', 'vti__search_box']"
-               aria-label="Search by country name or country code"
-               :placeholder="sortedCountries.length ? sortedCountries[0].name : ''"
-               type="text"
-               v-model="data.searchQuery"
-               @click.stop />
-        <li v-for="(pb, index) in sortedCountries"
-            role="option"
-            :class="['vti__dropdown-item', getItemClass(index, pb.iso2)]"
-            :key="pb.iso2 + (pb.preferred ? '-preferred' : '')"
-            tabindex="-1"
-            @click="choose(pb)"
-            @mousemove="data.selectedIndex = index"
-            :aria-selected="data.activeCountryCode === pb.iso2 && !pb.preferred">
-          <span
-              v-if="dropdownOptions.showFlags"
-              :class="['vti__flag', toLowerCase(pb.iso2)]"
-            ></span>
-          <strong>{{ pb.name }}</strong>
-          <span v-if="dropdownOptions.showDialCodeInList"> +{{ pb.dialCode }} </span>
-        </li>
-      </ul>
+      <Teleport to="body">
+      <transition name="sgfade">
+        <div class="sgmodal" v-if="data.open">
+          <div class="sgmodal__shadow" @click="clickedOutside"></div>
+          <div class="sgmodal__block" :style="blockStyle" :class="{'active': data.open, 'dragging': dragging }">
+            <div class="sgmodal__dragger" @touchstart="handleTouchStart" @touchmove="handleTouchMove" @touchend="handleTouchEnd"></div>
+            <div class="sgmodal__inner"></div>
+            <div class="sgmodal__content">
+            <ul 
+                ref="refList"
+                :class="['vti__dropdown-list', data.dropdownOpenDirection]"
+                role="listbox">
+              <input v-if="dropdownOptions.showSearchBox"
+                    :class="['vti__input', 'vti__search_box']"
+                    aria-label="Search by country name or country code"
+                    :placeholder="sortedCountries.length ? sortedCountries[0].name : ''"
+                    type="text"
+                    v-model="data.searchQuery"
+                    @click.stop />
+              <li v-for="(pb, index) in sortedCountries"
+                  role="option"
+                  :class="['vti__dropdown-item', getItemClass(index, pb.iso2)]"
+                  :key="pb.iso2 + (pb.preferred ? '-preferred' : '')"
+                  tabindex="-1"
+                  @click="choose(pb)"
+                  @mousemove="data.selectedIndex = index"
+                  :aria-selected="data.activeCountryCode === pb.iso2 && !pb.preferred">
+                <span
+                    v-if="dropdownOptions.showFlags"
+                    :class="['vti__flag', toLowerCase(pb.iso2)]"
+                  ></span>
+                <strong>{{ pb.name }}</strong>
+                <span v-if="dropdownOptions.showDialCodeInList"> +{{ pb.dialCode }} </span>
+              </li>
+            </ul>
+            </div>
+          </div>
+        </div>
+      </transition>
+      </Teleport>
     </div>
     <input v-model="data.phone"
            ref="refInput"
@@ -87,11 +100,16 @@
   import { parsePhoneNumberFromString } from 'libphonenumber-js';
   import { getDefault, setCaretPosition, getCountry, toLowerCase, toUpperCase } from '../utils';
   import clickOutside from '../directives/click-outside';
-  import { computed, nextTick, onMounted, reactive, shallowRef, watch } from 'vue';
+  import { computed, nextTick, onMounted, reactive, shallowRef, watch, ref, onBeforeUnmount } from 'vue';
 
   const refRoot = shallowRef<HTMLDivElement>()
   const refList = shallowRef<HTMLUListElement>()
   const refInput = shallowRef<HTMLInputElement>()
+
+
+  onBeforeUnmount(() => {
+    document.body.classList.remove('sgmodal-opened');
+  })
 
   // let examples = null;
   // const getExamples = () => new Promise(
@@ -218,8 +236,10 @@
     if (isDropdownOpened) {
       setDropdownPosition();
       emit('open');
+      document.body.classList.add('sgmodal-opened');
     } else {
       emit('close');
+      document.body.classList.remove('sgmodal-opened');
     }
   })
 
@@ -338,6 +358,49 @@
       }
     });
   })
+
+  // GG MODAL
+
+  const startY = ref(0)
+  const currentY = ref(0)
+  const dragging =  ref(false)
+
+  const blockStyle = computed(() => {
+    if (!dragging.value) return {};
+    const moveY = currentY.value - startY.value;
+    return {
+      transform: `translateY(${moveY}px)`,
+      transition: 'none',
+    };
+  })
+
+  const handleTouchStart = (event) => {
+    startY.value = event.touches[0].clientY;
+    currentY.value = startY.value;
+    dragging.value = true;
+  }
+
+  const  handleTouchMove = (event)  => {
+    currentY.value = event.touches[0].clientY;
+  }
+
+  const handleTouchEnd = () => {
+      dragging.value = false;
+      // Сбрасываем стиль, если окно не было закрыто
+
+      const moveY = currentY.value - startY.value;
+      if (moveY > 200) {
+        data.open = false
+      }
+      if (data.open) {
+        nextTick(() => {
+          currentY.value = 0;
+          startY.value = 0;
+        });
+      }
+    }
+
+  // GG MODAL END
 
   // finishMounted() {
   //   resetPlaceholder();
@@ -642,5 +705,14 @@
   }
 </script>
 
-<style src="../assets/sprite.css"></style>
+<style src="../assets/sprite.css"></style> 
+
 <style src="../assets/component.css"></style>
+
+<style>
+:root {
+  --block: #fff;
+  --caption: #999;
+}
+
+</style>
